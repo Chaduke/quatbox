@@ -1,0 +1,149 @@
+This is code for "Quatbox" a simple Pico-8 quaterinion playground:
+
+-- quaternion sandbox
+-- ⬅️➡️ rotate  ❎ cycle axis  🅾️ reset
+
+-- verts centered on centroid
+-- (screen pts minus 64,74.67)
+pts={
+ {x=0,y=-42.7,z=0},
+ {x=-48,y=21.3,z=0},
+ {x=48,y=21.3,z=0}
+}
+piv={x=64,y=75}
+
+axes={
+ {n="x",x=1,y=0,z=0},
+ {n="y",x=0,y=1,z=0},
+ {n="z",x=0,y=0,z=1}
+}
+ai=3
+ang=0
+
+-- hamilton product
+function qmul(a,b)
+ return {
+  w=a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z,
+  x=a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
+  y=a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
+  z=a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w}
+end
+
+function qconj(q)
+ return {w=q.w,x=-q.x,y=-q.y,z=-q.z}
+end
+
+-- axis-angle -> quat
+-- t in turns (pico-8 style)
+function qaxis(ax,t)
+ local h=t/2
+ local s,c=-sin(h),cos(h)
+ return {w=c,x=ax.x*s,y=ax.y*s,z=ax.z*s}
+end
+
+-- v' = q * (0,v) * q^-1
+function qrot(q,v)
+ local p=qmul(qmul(q,{w=0,x=v.x,y=v.y,z=v.z}),qconj(q))
+ return {x=p.x,y=p.y,z=p.z}
+end
+
+function fmt(n)
+ return flr(n*10+0.5)/10
+end
+
+function _update()
+ if btn(0) then ang-=0.004 end
+ if btn(1) then ang+=0.004 end
+ if btnp(❎) then ai=ai%3+1 end
+ if btnp(🅾️) then ang=0 end
+end
+
+function _draw()
+ cls()
+ local q=qaxis(axes[ai],ang)
+ local r={}
+ for i=1,3 do r[i]=qrot(q,pts[i]) end
+
+ -- ghost of original (dark)
+ for i=1,3 do
+  local a,b=pts[i],pts[i%3+1]
+  line(a.x+piv.x,a.y+piv.y,
+       b.x+piv.x,b.y+piv.y,1)
+ end
+
+ -- rotated triangle
+ -- orthographic: just drop z
+ for i=1,3 do
+  local a,b=r[i],r[i%3+1]
+  line(a.x+piv.x,a.y+piv.y,
+       b.x+piv.x,b.y+piv.y,7)
+ end
+ for i=1,3 do
+  local v=r[i]
+  rectfill(v.x+piv.x-1,v.y+piv.y-1,
+           v.x+piv.x+1,v.y+piv.y+1,11)
+ end
+
+ print("axis:"..axes[ai].n.."  ang:"..fmt(ang).." turns",1,1,6)
+ print("q w:"..fmt(q.w).." x:"..fmt(q.x)
+   .." y:"..fmt(q.y).." z:"..fmt(q.z),1,8,12)
+
+ for i=1,3 do
+  local p,v=pts[i],r[i]
+  print(i.." "..fmt(p.x)..","..fmt(p.y)..","..fmt(p.z)
+    .." > "..fmt(v.x)..","..fmt(v.y)..","..fmt(v.z),
+    1,102+i*7,i==1 and 8 or i==2 and 9 or 10)
+ end
+end
+
+The idea is take this further, so when the player runs the game, they get two options:
+Learn 
+Play
+
+The code listed covers the "Play" section
+
+The following description is for the "Learn" Section
+
+Quatbox is a great shape for this — and PICO-8 is weirdly perfect for it because the whole pedagogical trick with quaternions is making 4D machinery feel concrete, and nothing forces concreteness like 128x128 pixels and a d-pad. Every screen should follow the rule: one idea, one interactive toy, live numbers on screen. No screen is just text.
+
+One ordering fix to your draft: imaginary numbers come *before* complex numbers (a complex number is real + imaginary, so you need i first). And the deep structural insight for the whole curriculum is this: **2D rotation via complex multiplication is the entire secret**. If a learner really gets that multiplying by a unit complex number rotates a point, quaternions become "the same trick, but it took a 4D number system to make it work in 3D." That's the spine. Here's how I'd hang ~21 screens on it:
+
+**Act 1 — Space and the problem (5 screens)**
+
+1. **Points on a plane** — x,y, move a dot with the d-pad, coordinates readout.
+2. **Points in 3D** — add z. Two views side by side (front + top) so z is visibly real even though the screen is flat. This kills "z is fake" early.
+3. **2D rotation with sin/cos** — spin a point around origin, show the circle it traces. Introduce turns-as-angle here since it's PICO-8 native.
+4. **Three axes in 3D** — rotate a triangle around x, then y, then z separately. This is literally your sandbox, simplified.
+5. **The problem: order matters** — apply x-then-y vs y-then-x rotations to the same object, show they land in different places. Optionally a gimbal lock demo. This screen creates the *need* for quaternions; without it the rest is a solution looking for a problem.
+
+**Act 2 — The complex number bridge (4 screens)**
+
+6. **What is i?** — the number line, then: what number times itself is -1? Nothing on the line. So we go *off* the line. Show i as "up."
+7. **Complex numbers as points** — a+bi is just (a,b). Move a dot, watch the a+bi readout. Demystified.
+8. **Multiplying by i rotates** — the showstopper. Take point (3,1), multiply by i, watch it jump 90°. Multiply again, again, again — it comes home. Rotation is multiplication.
+9. **Unit complex numbers = a rotation dial** — cos(t)+i·sin(t), magnitude 1, drag around the unit circle, watch a shape rotate by exactly that amount. Also show what happens with magnitude ≠ 1 (scaling) — this plants the seed for why quats must be normalized.
+
+**Act 3 — Hamilton's leap (4 screens)**
+
+10. **The failed 3D number** — Hamilton spent years trying a+bi+cj. Doesn't work. The fix: add a *fourth* part. The bridge inscription (i²=j²=k²=ijk=−1) is a great flavor beat.
+11. **Quaternion anatomy** — w+xi+yj+zk, shown as (w, x, y, z). Four sliders, four numbers. No rotation yet, just: this is the object.
+12. **ij=k, ji=−k** — the multiplication table as an interactive grid. Non-commutativity as a *feature*: remember screen 5? Rotations don't commute either. The algebra is weird in exactly the way 3D space is weird.
+13. **Pure quaternions carry points** — a 3D point rides inside a quaternion as (0, x, y, z). This is the packaging step everyone skips and then the sandwich looks like magic.
+
+**Act 4 — The machine (5 screens)**
+
+14. **Axis-angle → quaternion** — pick an axis, pick an angle, watch w=cos(t/2) and xyz=axis·sin(t/2) form up. Say "half" but don't explain yet — tease it.
+15. **The conjugate** — flip the signs of xyz, show q·q* = 1 for unit quats. It's the "undo."
+16. **The sandwich** — q·v·q⁻¹, live, on your triangle. Show the failed version too: what q·v alone does (it drifts out of 3D — w goes nonzero). The sandwich exists because one multiplication *leaves* 3D space and the second brings it back.
+17. **The half-angle / double cover** — rotate 360°, the object is home but the quat is *negated*. Keep going to 720° and the quat comes home. This is the payoff of screen 14's tease, and it's your Defold `.z` bug as a museum exhibit: components aren't angles.
+18. **Composing rotations = multiplying quats** — q2·q1 applies q1 then q2. Show order mattering, resolving screen 5's problem.
+
+**Act 5 — Practice (2-3 screens)**
+
+19. **Normalization** — accumulate tiny float errors, watch the shape slowly inflate, hit a button to renormalize. Why every engine does this.
+20. **SLERP** — interpolate between two orientations, compare against naive lerp-the-eulers (which wobbles and speeds up). This is the "why your game engine uses quats" screen.
+21. **→ PLAY unlocked** — the sandbox, now with everything labeled in terms they've earned.
+
+On the code limits: the constraint you'll hit first is the 8192-token count, but PICO-8 counts any string literal as **one token** regardless of length — so lesson text is nearly free token-wise (it costs compressed cart size instead, and you get 32KB, which is a lot of text). The architecture that makes this fit is data-driven lessons: one shared engine with `lessons={ {title,txt,init,update,draw}, ... }`, and most screens share draw helpers (the triangle, the unit circle, the number readout panel — you'll reuse those constantly). If you outgrow one cart anyway, `load()` chains carts seamlessly, so LEARN and PLAY could even ship as two carts with a menu cart in front.
+
+The other thing this structure buys you: it's a video series outline for free. Each act is an episode, each screen is a scene, and the deadpan 1800s voice explaining "what manner of number, when squared, yields negative one" writes itself.
